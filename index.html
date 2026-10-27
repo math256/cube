@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 루빅스 큐브 시뮬레이터</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background: radial-gradient(circle at center, #1e2638 0%, #0c1017 100%);
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #canvas-container {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+    /* UI 상단/하단 오버레이 */
+    .ui-container {
+      position: absolute;
+      z-index: 10;
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+    header {
+      pointer-events: auto;
+      background: rgba(18, 24, 38, 0.75);
+      backdrop-filter: blur(10px);
+      padding: 15px 25px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #00d2ff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-badge {
+      font-size: 0.85rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(0, 210, 255, 0.15);
+      color: #00d2ff;
+      border: 1px solid rgba(0, 210, 255, 0.3);
+    }
+    /* 컨트롤 패널 */
+    footer {
+      pointer-events: auto;
+      background: rgba(18, 24, 38, 0.85);
+      backdrop-filter: blur(12px);
+      padding: 20px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn {
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:active {
+      transform: scale(0.95);
+    }
+    /* 큐브 기호 버튼 */
+    .btn-move {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      min-width: 48px;
+      justify-content: center;
+    }
+    .btn-move:hover {
+      background: rgba(0, 210, 255, 0.2);
+      border-color: #00d2ff;
+      color: #00d2ff;
+    }
+    /* 특수 기능 버튼 */
+    .btn-action {
+      background: #00d2ff;
+      color: #0c1017;
+    }
+    .btn-action:hover {
+      background: #3aebff;
+      box-shadow: 0 0 15px rgba(0, 210, 255, 0.4);
+    }
+    .btn-solve {
+      background: #00e676;
+      color: #0c1017;
+    }
+    .btn-solve:hover {
+      background: #33eb91;
+      box-shadow: 0 0 15px rgba(0, 230, 118, 0.4);
+    }
+    .help-text {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #8b9bb4;
+      line-height: 1.4;
+    }
+    .key-badge {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #fff;
+      font-family: monospace;
+    }
+  </style>
+  <!-- Three.js 및 OrbitControls CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <div class="ui-container">
+    <header>
+      <h1>🎲 3D 루빅스 큐브</h1>
+      <div class="status-badge" id="status-text">준비 완료</div>
+    </header>
+
+    <footer>
+      <!-- 특수 조작 버튼 -->
+      <div class="btn-group">
+        <button class="btn btn-action" onclick="scrambleCube()">🔀 큐브 섞기 (Scramble)</button>
+        <button class="btn btn-solve" onclick="autoSolveCube()">✨ 자동 맞추기 (Auto Solve)</button>
+        <button class="btn btn-move" onclick="resetView()">🔄 시점 리셋</button>
+      </div>
+
+      <!-- 기본 큐브 기호 (시계 방향) -->
+      <div class="btn-group">
+        <button class="btn btn-move" onclick="triggerMove('U')">U</button>
+        <button class="btn btn-move" onclick="triggerMove('D')">D</button>
+        <button class="btn btn-move" onclick="triggerMove('L')">L</button>
+        <button class="btn btn-move" onclick="triggerMove('R')">R</button>
+        <button class="btn btn-move" onclick="triggerMove('F')">F</button>
+        <button class="btn btn-move" onclick="triggerMove('B')">B</button>
+      </div>
+
+      <!-- 반시계 방향 큐브 기호 (Prime) -->
+      <div class="btn-group">
+        <button class="btn btn-move" onclick="triggerMove('U\'')">U'</button>
+        <button class="btn btn-move" onclick="triggerMove('D\'')">D'</button>
+        <button class="btn btn-move" onclick="triggerMove('L\'')">L'</button>
+        <button class="btn btn-move" onclick="triggerMove('R\'')">R'</button>
+        <button class="btn btn-move" onclick="triggerMove('F\'')">F'</button>
+        <button class="btn btn-move" onclick="triggerMove('B\'')">B'</button>
+      </div>
+
+      <div class="help-text">
+        🖱️ <strong>마우스 드래그</strong>: 시점 360도 회전 | 휠: 확대/축소<br>
+        ⌨️ <strong>키보드 단축키</strong>: <span class="key-badge">U</span>, <span class="key-badge">D</span>, <span class="key-badge">L</span>, <span class="key-badge">R</span>, <span class="key-badge">F</span>, <span class="key-badge">B</span> (반시계방향: <span class="key-badge">Shift + 키</span>)
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. Three.js 씬(Scene) & 카메라 & 렌더러 설정
+    // ==========================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(6, 6, 8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    // 마우스 드래그로 큐브를 자유롭게 둘러보는 OrbitControls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // 조명 (빛)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirLight1.position.set(10, 20, 15);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dirLight2.position.set(-10, -20, -15);
+    scene.add(dirLight2);
+
+    // ==========================================
+    // 2. 루빅스 큐브 생성 (26개 조각)
+    // ==========================================
+    const CUBE_SIZE = 1;
+    const SPACING = 0.03;
+    const TOTAL_STEP = CUBE_SIZE + SPACING;
+    const cubies = [];
+
+    // 루빅스 큐브 정식 6색 머티리얼 (Right, Left, Top, Bottom, Front, Back)
+    // R: 주황/빨강, L: 주황/빨강, U: 노랑/하양, D: 노랑/하양, F: 초록, B: 파랑
+    const faceColors = [
+      0xb90000, // +X: Red
+      0xff5900, // -X: Orange
+      0xffffff, // +Y: White
+      0xffd500, // -Y: Yellow
+      0x009b48, // +Z: Green
+      0x0045ad  // -Z: Blue
+    ];
+
+    function createCubieMaterials() {
+      return faceColors.map(color => new THREE.MeshLambertMaterial({
+        color: color,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      }));
+    }
+
+    // 3x3x3 조각 배치
+    for (let x = -1; x <= 1; x++) {
+      for (let y = -1; y <= 1; y++) {
+        for (let z = -1; z <= 1; z++) {
+          if (x === 0 && y === 0 && z === 0) continue; // 중앙 코어는 생략
+
+          const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+          const materials = createCubieMaterials();
+          const mesh = new THREE.Mesh(geometry, materials);
+
+          // 외곽 검은색 테두리 라인
+          const edges = new THREE.EdgesGeometry(geometry);
+          const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 2 }));
+          mesh.add(line);
+
+          mesh.position.set(x * TOTAL_STEP, y * TOTAL_STEP, z * TOTAL_STEP);
+          mesh.userData = { x, y, z };
+
+          scene.add(mesh);
+          cubies.push(mesh);
+        }
+      }
+    }
+
+    // ==========================================
+    // 3. 회전 로직 및 애니메이션 제어
+    // ==========================================
+    let isAnimating = false;
+    const moveQueue = [];
+    const moveHistory = []; // 자동 맞추기를 위해 기록
+
+    // 큐브 공식 회전 정의
+    // 축(axis), 레이어 판별 조건(condition), 회전 각도(angle)
+    const MOVE_DEFINITIONS = {
+      'U':  { axis: 'y', coord: 'y', val: 1,  angle: -Math.PI / 2 },
+      'U\'':{ axis: 'y', coord: 'y', val: 1,  angle:  Math.PI / 2 },
+      'D':  { axis: 'y', coord: 'y', val: -1, angle:  Math.PI / 2 },
+      'D\'':{ axis: 'y', coord: 'y', val: -1, angle: -Math.PI / 2 },
+      'R':  { axis: 'x', coord: 'x', val: 1,  angle: -Math.PI / 2 },
+      'R\'':{ axis: 'x', coord: 'x', val: 1,  angle:  Math.PI / 2 },
+      'L':  { axis: 'x', coord: 'x', val: -1, angle:  Math.PI / 2 },
+      'L\'':{ axis: 'x', coord: 'x', val: -1, angle: -Math.PI / 2 },
+      'F':  { axis: 'z', coord: 'z', val: 1,  angle: -Math.PI / 2 },
+      'F\'':{ axis: 'z', coord: 'z', val: 1,  angle:  Math.PI / 2 },
+      'B':  { axis: 'z', coord: 'z', val: -1, angle:  Math.PI / 2 },
+      'B\'':{ axis: 'z', coord: 'z', val: -1, angle: -Math.PI / 2 }
+    };
+
+    function triggerMove(move, record = true) {
+      moveQueue.push({ move, record });
+      processQueue();
+    }
+
+    function processQueue() {
+      if (isAnimating || moveQueue.length === 0) return;
+
+      const { move, record } = moveQueue.shift();
+      const def = MOVE_DEFINITIONS[move];
+      if (!def) return;
+
+      if (record) {
+        moveHistory.push(move);
+      }
+
+      isAnimating = true;
+      document.getElementById('status-text').innerText = `회전 중: ${move}`;
+
+      // 회전 대상 큐블릿들 선별
+      const targetCubies = cubies.filter(cubie => {
+        return Math.round(cubie.position[def.coord] / TOTAL_STEP) === def.val;
+      });
+
+      // 회전을 담을 임시 피벗 그룹
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+
+      targetCubies.forEach(cubie => {
+        pivot.attach(cubie);
+      });
+
+      // 부드러운 회전 애니메이션 (약 0.18초)
+      const duration = 180;
+      const startTime = performance.now();
+      const axisVector = new THREE.Vector3(
+        def.axis === 'x' ? 1 : 0,
+        def.axis === 'y' ? 1 : 0,
+        def.axis === 'z' ? 1 : 0
+      );
+
+      function animateRotation(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // 부드러운 이징 (Ease-out)
+        const ease = 1 - Math.pow(1 - progress, 3);
+        pivot.setRotationFromAxisAngle(axisVector, def.angle * ease);
+
+        if (progress < 1) {
+          requestAnimationFrame(animateRotation);
+        } else {
+          // 회전 완료 후 씬으로 원복 및 좌표 동기화
+          pivot.setRotationFromAxisAngle(axisVector, def.angle);
+          pivot.updateMatrixWorld();
+
+          targetCubies.forEach(cubie => {
+            scene.attach(cubie);
+            // 정밀한 위치 보정
+            cubie.position.x = Math.round(cubie.position.x / TOTAL_STEP) * TOTAL_STEP;
+            cubie.position.y = Math.round(cubie.position.y / TOTAL_STEP) * TOTAL_STEP;
+            cubie.position.z = Math.round(cubie.position.z / TOTAL_STEP) * TOTAL_STEP;
+          });
+
+          scene.remove(pivot);
+          isAnimating = false;
+          document.getElementById('status-text').innerText = '준비 완료';
+          processQueue();
+        }
+      }
+
+      requestAnimationFrame(animateRotation);
+    }
+
+    // ==========================================
+    // 4. 큐브 섞기 & 자동 맞추기 알고리즘
+    // ==========================================
+    function scrambleCube() {
+      if (isAnimating) return;
+      const moves = Object.keys(MOVE_DEFINITIONS);
+      document.getElementById('status-text').innerText = '큐브를 섞는 중...';
+      
+      // 20회의 랜덤 무브 생성
+      for (let i = 0; i < 20; i++) {
+        const randMove = moves[Math.floor(Math.random() * moves.length)];
+        triggerMove(randMove, true);
+      }
+    }
+
+    function autoSolveCube() {
+      if (isAnimating || moveHistory.length === 0) return;
+      document.getElementById('status-text').innerText = '자동 복구 중...';
+
+      // 지금까지 진행된 회전 기록의 역순(Inverse)을 실행
+      while (moveHistory.length > 0) {
+        const lastMove = moveHistory.pop();
+        const inverseMove = lastMove.endsWith('\'') ? lastMove.replace('\'', '') : lastMove + '\'';
+        triggerMove(inverseMove, false);
+      }
+    }
+
+    function resetView() {
+      camera.position.set(6, 6, 8);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+
+    // ==========================================
+    // 5. 키보드 이벤트 리스너
+    // ==========================================
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toUpperCase();
+      const isShift = e.shiftKey;
+
+      if (['U', 'D', 'L', 'R', 'F', 'B'].includes(key)) {
+        const move = isShift ? `${key}'` : key;
+        triggerMove(move);
+      }
+    });
+
+    // 윈도우 창 크기 변경 대응
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // 렌더링 루프
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
